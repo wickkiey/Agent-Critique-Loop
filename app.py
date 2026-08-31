@@ -54,7 +54,7 @@ with st.sidebar:
         type=["txt", "md", "py", "json"],
         accept_multiple_files=True,
     )
-    run_clicked = st.button("Run critique loop", type="primary", use_container_width=True)
+    run_clicked = st.button("Run critique loop", type="primary", width="stretch")
 
 
 def build_task(task: str, files: list) -> str:
@@ -117,7 +117,7 @@ def header_html(event: dict) -> str:
 
 def render_event(event: dict):
     payload = event["payload"]
-    st.markdown(header_html(event), unsafe_allow_html=True)
+    st.html(header_html(event))
 
     if event["step"] == "critique":
         verdict = "✅ Agrees" if payload.get("agree") else "❌ Disagrees"
@@ -146,37 +146,70 @@ def render_event(event: dict):
         st.json(event)
 
 
-def place(event: dict):
-    """Agent A cards land in the left column, Agent B cards on the right, in arrival order."""
-    left, right = st.columns(2, gap="large")
-    target = left if event["agent"] == "AgentA" else right
-    with target:
-        with st.container(border=True):
-            render_event(event)
+def thinking_html(agent: str) -> str:
+    meta = AGENTS.get(agent, {"icon": "⚪", "label": agent, "accent": "#888", "tint": "#88888818"})
+    return f"""
+<style>
+@keyframes acl-bounce {{ 0%, 80%, 100% {{ transform: scale(.5); opacity:.35; }} 40% {{ transform: scale(1); opacity:1; }} }}
+@keyframes acl-sweep {{ 0% {{ background-position: -320px 0; }} 100% {{ background-position: 320px 0; }} }}
+.acl-think {{ border:1px dashed {meta['accent']}66; background:{meta['tint']}; border-radius:10px; padding:14px 16px; }}
+.acl-dot {{ width:9px; height:9px; border-radius:50%; background:{meta['accent']}; display:inline-block;
+            margin-right:5px; animation: acl-bounce 1.2s infinite ease-in-out; }}
+.acl-bar {{ height:9px; border-radius:5px; margin-top:12px;
+            background: linear-gradient(90deg, {meta['accent']}18 25%, {meta['accent']}55 50%, {meta['accent']}18 75%);
+            background-size: 320px 100%; animation: acl-sweep 1.3s linear infinite; }}
+.acl-bar.short {{ width:60%; }}
+</style>
+<div class="acl-think">
+  <span style="font-weight:700;color:{meta['accent']};">{meta['icon']} {meta['label']}</span>
+  <span style="opacity:.7;"> is thinking</span>
+  <span style="margin-left:8px;">
+    <span class="acl-dot"></span>
+    <span class="acl-dot" style="animation-delay:.16s;"></span>
+    <span class="acl-dot" style="animation-delay:.32s;"></span>
+  </span>
+  <div class="acl-bar"></div>
+  <div class="acl-bar short"></div>
+</div>
+"""
 
 
 if run_clicked:
     full_task = build_task(task_text, uploaded_files or [])
     st.markdown(f"#### 🔵 `{model_a}` &nbsp;&nbsp;↔&nbsp;&nbsp; 🔴 `{model_b}`")
-    timeline = st.container()
     status = st.status("Starting critique loop...", expanded=False)
+
+    # One persistent column per agent so cards stack independently instead of each pair
+    # reserving a full-width row; the spacer offsets Agent B slightly below Agent A.
+    left, right = st.columns(2, gap="medium")
+    right.html("<div style='height:56px'></div>")
+    columns = {"AgentA": left, "AgentB": right}
+
+    next_agent = "AgentA"
+    slot = columns[next_agent].empty()
+    slot.html(thinking_html(next_agent))
     result = None
 
     try:
         for kind, data in stream_critique_loop(FRAMEWORKS[framework], full_task, model_a, model_b, max_iterations):
-            if kind == "EVENT":
-                with timeline:
-                    place(data)
-                label = AGENTS.get(data["agent"], {}).get("label", data["agent"])
-                step = STEP_LABEL.get(data["step"], data["step"])
-                status.update(label=f"{label} · iteration {data['iteration']} · {step} done")
-            else:
+            if kind == "RESULT":
                 result = data
+                continue
+            with slot.container(border=True):
+                render_event(data)
+            label = AGENTS.get(data["agent"], {}).get("label", data["agent"])
+            step = STEP_LABEL.get(data["step"], data["step"])
+            status.update(label=f"{label} · iteration {data['iteration']} · {step} done")
+            next_agent = "AgentB" if data["agent"] == "AgentA" else "AgentA"
+            slot = columns[next_agent].empty()
+            slot.html(thinking_html(next_agent))
     except Exception as exc:
+        slot.empty()
         status.update(label="Run failed", state="error")
         st.error(f"Run failed: {exc}")
         st.stop()
 
+    slot.empty()
     status.update(label="Critique loop finished", state="complete")
 
     if result:
