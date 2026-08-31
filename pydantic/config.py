@@ -4,7 +4,8 @@ from pydantic import BaseModel
 
 
 class Config(BaseModel):
-    model_name: str = "qwen3:8b"
+    model_a: str = "qwen3:8b"
+    model_b: str = "qwen3:8b"
     base_url: str = "http://localhost:11434/v1"
     api_key: str = "ollama"  # Ollama ignores the key but the OpenAI SDK requires one
     max_iterations: int = 3

@@ -8,14 +8,14 @@ from config import Config
 from tools import file_search, web_search
 
 
-def build_model(config: Config) -> OpenAIChatModel:
+def build_model(config: Config, model_name: str) -> OpenAIChatModel:
     provider = OpenAIProvider(base_url=config.base_url, api_key=config.api_key)
-    return OpenAIChatModel(config.model_name, provider=provider)
+    return OpenAIChatModel(model_name, provider=provider)
 
 
-def create_agent(config: Config, name: str, system_prompt: str, output_type: type) -> Agent:
+def create_agent(config: Config, name: str, system_prompt: str, output_type: type, model_name: str) -> Agent:
     return Agent(
-        build_model(config),
+        build_model(config, model_name),
         output_type=output_type,
         system_prompt=system_prompt,
         name=name,

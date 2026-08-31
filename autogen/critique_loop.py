@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from typing import Callable
 
 from autogen_agentchat.base import TaskResult
 
@@ -29,36 +30,65 @@ def _usage_tokens(result: TaskResult) -> int:
     return total
 
 
+def _tool_calls(result: TaskResult) -> list[dict]:
+    """Pair FunctionCall requests with their FunctionExecutionResults into readable log entries."""
+    calls: dict[str, dict] = {}
+    for message in result.messages:
+        content = getattr(message, "content", None)
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            call_id = getattr(item, "id", None) or getattr(item, "call_id", "")
+            if hasattr(item, "arguments"):
+                calls[call_id] = {"name": getattr(item, "name", ""), "args": item.arguments, "result": ""}
+            elif hasattr(item, "call_id"):
+                entry = calls.setdefault(call_id, {"name": getattr(item, "name", ""), "args": "", "result": ""})
+                entry["result"] = str(getattr(item, "content", ""))
+    return list(calls.values())
+
+
 class CritiqueLoop:
-    def __init__(self, config: Config | None = None):
+    def __init__(self, config: Config | None = None, on_event: Callable[[TraceEvent], None] | None = None):
         self.config = config or Config()
-        client = build_model_client(self.config)
-        self.solver_a = create_agent(client, "AgentA", SOLVER_SYSTEM.format(name="AgentA"), Solution, with_tools=True)
-        self.solver_b = create_agent(client, "AgentB", SOLVER_SYSTEM.format(name="AgentB"), Solution, with_tools=True)
-        self.critic_a = create_agent(client, "AgentA", CRITIC_SYSTEM.format(name="AgentA"), Critique)
-        self.critic_b = create_agent(client, "AgentB", CRITIC_SYSTEM.format(name="AgentB"), Critique)
+        self.on_event = on_event
+        client_a = build_model_client(self.config, self.config.model_a)
+        client_b = build_model_client(self.config, self.config.model_b)
+        self.solver_a = create_agent(client_a, "AgentA", SOLVER_SYSTEM.format(name="AgentA"), Solution, with_tools=True)
+        self.solver_b = create_agent(client_b, "AgentB", SOLVER_SYSTEM.format(name="AgentB"), Solution, with_tools=True)
+        self.critic_a = create_agent(client_a, "AgentA", CRITIC_SYSTEM.format(name="AgentA"), Critique)
+        self.critic_b = create_agent(client_b, "AgentB", CRITIC_SYSTEM.format(name="AgentB"), Critique)
 
     def run(self, task: str) -> RunResult:
         return asyncio.run(self._run(task))
 
-    def _trace(self, trace: list[TraceEvent], step: str, agent: str, iteration: int, payload: dict):
-        trace.append(TraceEvent(step=step, agent=agent, iteration=iteration, payload=payload))
+    def _trace(self, trace: list[TraceEvent], step: str, agent: str, iteration: int, output, tools: list[dict]):
+        event = TraceEvent(
+            step=step,
+            agent=agent,
+            iteration=iteration,
+            payload=output.model_dump(),
+            tools=tools,
+            model=self.config.model_a if agent == "AgentA" else self.config.model_b,
+        )
+        trace.append(event)
+        if self.on_event:
+            self.on_event(event)
 
     async def _ask(self, agent, text: str):
         result = await agent.run(task=text)
-        return result.messages[-1].content, _usage_tokens(result)
+        return result.messages[-1].content, _usage_tokens(result), _tool_calls(result)
 
     async def _run(self, task: str) -> RunResult:
         trace: list[TraceEvent] = []
         start = time.monotonic()
         tokens_used = 0
 
-        solution_a, used = await self._ask(self.solver_a, task)
+        solution_a, used, tools = await self._ask(self.solver_a, task)
         tokens_used += used
-        solution_b, used = await self._ask(self.solver_b, task)
+        self._trace(trace, "initial_solution", "AgentA", 0, solution_a, tools)
+        solution_b, used, tools = await self._ask(self.solver_b, task)
         tokens_used += used
-        self._trace(trace, "initial_solution", "AgentA", 0, solution_a.model_dump())
-        self._trace(trace, "initial_solution", "AgentB", 0, solution_b.model_dump())
+        self._trace(trace, "initial_solution", "AgentB", 0, solution_b, tools)
 
         consensus = False
         iteration = 0
@@ -69,16 +99,16 @@ class CritiqueLoop:
                 break
             iteration += 1
 
-            critique_a_on_b, used = await self._ask(
+            critique_a_on_b, used, tools = await self._ask(
                 self.critic_a, f"Task: {task}\nSolution to critique:\n{solution_b.content}"
             )
             tokens_used += used
-            critique_b_on_a, used = await self._ask(
+            self._trace(trace, "critique", "AgentA", iteration, critique_a_on_b, tools)
+            critique_b_on_a, used, tools = await self._ask(
                 self.critic_b, f"Task: {task}\nSolution to critique:\n{solution_a.content}"
             )
             tokens_used += used
-            self._trace(trace, "critique", "AgentA", iteration, critique_a_on_b.model_dump())
-            self._trace(trace, "critique", "AgentB", iteration, critique_b_on_a.model_dump())
+            self._trace(trace, "critique", "AgentB", iteration, critique_b_on_a, tools)
 
             if (
                 critique_a_on_b.agree
@@ -89,20 +119,20 @@ class CritiqueLoop:
                 consensus = True
                 break
 
-            solution_a, used = await self._ask(
+            solution_a, used, tools = await self._ask(
                 self.solver_a,
                 f"Task: {task}\nYour previous answer:\n{solution_a.content}\n"
                 f"Critique received:\n{critique_b_on_a.model_dump_json()}\nRevise your answer.",
             )
             tokens_used += used
-            solution_b, used = await self._ask(
+            self._trace(trace, "revision", "AgentA", iteration, solution_a, tools)
+            solution_b, used, tools = await self._ask(
                 self.solver_b,
                 f"Task: {task}\nYour previous answer:\n{solution_b.content}\n"
                 f"Critique received:\n{critique_a_on_b.model_dump_json()}\nRevise your answer.",
             )
             tokens_used += used
-            self._trace(trace, "revision", "AgentA", iteration, solution_a.model_dump())
-            self._trace(trace, "revision", "AgentB", iteration, solution_b.model_dump())
+            self._trace(trace, "revision", "AgentB", iteration, solution_b, tools)
 
         final = solution_a if solution_a.confidence >= solution_b.confidence else solution_b
         return RunResult(

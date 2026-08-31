@@ -12,9 +12,9 @@ WEB_SEARCH_TOOL = FunctionTool(web_search, description="Search the web (DuckDuck
 FILE_SEARCH_TOOL = FunctionTool(file_search, description="Search project files for lines matching a query.", strict=True)
 
 
-def build_model_client(config: Config) -> OpenAIChatCompletionClient:
+def build_model_client(config: Config, model_name: str) -> OpenAIChatCompletionClient:
     return OpenAIChatCompletionClient(
-        model=config.model_name,
+        model=model_name,
         base_url=config.base_url,
         api_key=config.api_key,
         # qwen3 is not in autogen's known-model registry, so capabilities must be declared explicitly.

@@ -25,6 +25,9 @@ class TraceEvent(BaseModel):
     agent: str
     iteration: int
     payload: dict
+    tools: list[dict] = Field(default_factory=list)
+    tokens: int = 0
+    model: str = ""
     timestamp: float = Field(default_factory=time.time)
 
 
