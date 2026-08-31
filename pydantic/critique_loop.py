@@ -7,8 +7,9 @@ from config import Config
 from models import Critique, RunResult, Solution, TraceEvent
 
 SOLVER_SYSTEM = (
-    "You are {name}, an independent problem solver. Use the knowledge_lookup tool "
-    "when it can provide supporting facts. Answer the task directly and concisely."
+    "You are {name}, an independent problem solver. Use the web_search tool for external facts and "
+    "the file_search tool to look for supporting information in local project files, when useful. "
+    "Answer the task directly and concisely."
 )
 CRITIC_SYSTEM = (
     "You are {name}, a rigorous critic. Evaluate the given solution for correctness, "

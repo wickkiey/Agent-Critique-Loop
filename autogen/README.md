@@ -25,7 +25,7 @@ critiques, revisions) so past runs can be compared later.
 
 - `config.py` — model/loop settings (max iterations, agreement threshold, timeout, token budget)
 - `models.py` — `Solution`, `Critique`, `TraceEvent`, `RunResult` pydantic models
-- `tools.py` — stub `knowledge_lookup` tool used as evidence source
+- `tools.py` — real tools: `web_search` (free DuckDuckGo search, no API key) and `file_search` (local project file search)
 - `agents.py` — wires `AssistantAgent` to Ollama via `OpenAIChatCompletionClient`, using structured output
 - `critique_loop.py` — orchestrates the critique/refine/consensus loop
 - `main.py` — demo entrypoint

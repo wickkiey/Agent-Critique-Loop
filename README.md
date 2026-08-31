@@ -26,4 +26,14 @@ dependencies into it, and runs a sample critique with each agent:
 Each run writes a timestamped trace to `pydantic/runs/run_<timestamp>.json` and
 `autogen/runs/run_<timestamp>.json` (never overwritten) so you can compare past runs later.
 
+## Streamlit UI
+
+`app.py` provides an interactive UI: pick a framework, submit a task (plus optional text/markdown/
+code/JSON files for extra context), and watch Agent A (left, blue) and Agent B (right, red) critique
+and refine each other in real time, with the final consensus answer shown at the bottom.
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
 See each subfolder's README for install/run instructions.

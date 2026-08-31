@@ -21,6 +21,9 @@ Write-Host "Installing pydantic/ dependencies ..."
 Write-Host "Installing autogen/ dependencies ..."
 & $venvPython -m pip install -q -r (Join-Path $root "autogen\requirements.txt")
 
+Write-Host "Installing Streamlit app dependencies ..."
+& $venvPython -m pip install -q -r (Join-Path $root "requirements.txt")
+
 Write-Host "`n=== Running pydantic-ai critique agent ==="
 Push-Location (Join-Path $root "pydantic")
 try {

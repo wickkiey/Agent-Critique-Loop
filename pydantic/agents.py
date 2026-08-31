@@ -5,7 +5,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import Config
-from tools import knowledge_lookup
+from tools import file_search, web_search
 
 
 def build_model(config: Config) -> OpenAIChatModel:
@@ -19,5 +19,5 @@ def create_agent(config: Config, name: str, system_prompt: str, output_type: typ
         output_type=output_type,
         system_prompt=system_prompt,
         name=name,
-        tools=[knowledge_lookup],
+        tools=[web_search, file_search],
     )

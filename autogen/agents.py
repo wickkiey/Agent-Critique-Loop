@@ -5,10 +5,11 @@ from autogen_core.tools import FunctionTool
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 from config import Config
-from tools import knowledge_lookup
+from tools import file_search, web_search
 
 # strict=True is required because structured (output_content_type) responses are auto-parsed by the OpenAI SDK
-KNOWLEDGE_LOOKUP_TOOL = FunctionTool(knowledge_lookup, description="Look up a canned fact for a query.", strict=True)
+WEB_SEARCH_TOOL = FunctionTool(web_search, description="Search the web (DuckDuckGo, free) for a query.", strict=True)
+FILE_SEARCH_TOOL = FunctionTool(file_search, description="Search project files for lines matching a query.", strict=True)
 
 
 def build_model_client(config: Config) -> OpenAIChatCompletionClient:
@@ -38,7 +39,7 @@ def create_agent(
         name=name,
         model_client=model_client,
         system_message=system_message,
-        tools=[KNOWLEDGE_LOOKUP_TOOL] if with_tools else None,
+        tools=[WEB_SEARCH_TOOL, FILE_SEARCH_TOOL] if with_tools else None,
         output_content_type=output_content_type,
         reflect_on_tool_use=True,
     )
